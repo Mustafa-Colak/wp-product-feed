@@ -1,0 +1,1 @@
+# Bu dosya scrapers paketini tanımlar
