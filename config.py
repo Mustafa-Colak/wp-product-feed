@@ -57,3 +57,6 @@ SSL_DISABLED_DOMAINS = [
     'localhost',
     '127.0.0.1'
 ]
+
+# Site özel seçicileri
+SITE_SPECIFIC_SELECTORS = {}

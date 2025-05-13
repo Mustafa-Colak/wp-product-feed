@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import re
 import time
-from config import PRODUCT_SELECTORS
+from config import PRODUCT_SELECTORS, SITE_SPECIFIC_SELECTORS
 
 class ProductScraper(BaseScraper):
     """Ürün bilgilerini çekmek için özelleştirilmiş scraper."""
@@ -40,10 +40,31 @@ class ProductScraper(BaseScraper):
         else:
             print(message)
     
+    def get_site_specific_selectors(self):
+        """Site için özel seçicileri döndürür."""
+        if self.domain in SITE_SPECIFIC_SELECTORS:
+            # Varsayılan seçiciler ile site özel seçicileri birleştir
+            selectors = self.product_selectors.copy()
+            
+            # Her bir seçici türü için site özel seçicileri ekle
+            for selector_type, selector_list in SITE_SPECIFIC_SELECTORS[self.domain].items():
+                if selector_type in selectors and selector_list:
+                    # Site özel seçicileri listenin başına ekle (öncelik ver)
+                    selectors[selector_type] = selector_list + selectors[selector_type]
+                elif selector_list:
+                    selectors[selector_type] = selector_list
+            
+            return selectors
+        
+        return self.product_selectors
+    
     def analyze_page_structure(self, soup):
         """Sayfa yapısını analiz ederek ürün elementlerini tespit eder."""
-        # Önce varsayılan seçicileri kullanarak ürünleri bulmaya çalış
-        products = self.find_elements_by_selectors(soup, self.product_selectors["product_containers"])
+        # Site özel seçicileri al
+        selectors = self.get_site_specific_selectors()
+        
+        # Önce seçicileri kullanarak ürünleri bulmaya çalış
+        products = self.find_elements_by_selectors(soup, selectors["product_containers"])
         
         if products:
             return products
@@ -71,63 +92,33 @@ class ProductScraper(BaseScraper):
     
     def extract_product_info(self, element, page_url):
         """Verilen elementten ürün bilgilerini çıkarır."""
-        # Element bir link ise ve içinde resim varsa
-        if element.name == 'a' and element.find('img'):
-            title = element.get_text().strip() if element.get_text().strip() else element.get('title', '')
-            img = element.find('img')
-            image_url = urljoin(page_url, img.get('src', '')) if img.get('src') else ''
-            product_url = urljoin(page_url, element['href']) if 'href' in element.attrs else ''
-            
-            # Fiyat bilgisini bulmaya çalış
-            price_element = element.find(class_=re.compile('price', re.I))
-            price = price_element.get_text().strip() if price_element else ''
-            
-            return {
-                "title": title,
-                "price": price,
-                "image_url": image_url,
-                "product_url": product_url,
-                "description": "",
-                "selected": False
-            }
-            
-        # Element bir div veya başka bir container ise
-        else:
-            # Başlık bulmaya çalış
-            title_element = None
-            for selector in ['h1', 'h2', 'h3', 'h4', '.title', '.name', '.product-title', '.product-name']:
-                title_element = element.select_one(selector)
-                if title_element:
-                    break
-                    
-            title = title_element.get_text().strip() if title_element else ''
-            
-            # Başlık bulunamadıysa ve bir link varsa, linkin metnini kullan
-            if not title:
-                link = element.find('a')
-                if link:
-                    title = link.get_text().strip() or link.get('title', '')
-            
-            # Fiyat bulmaya çalış
-            price_element = element.find(class_=re.compile('price', re.I))
-            price = price_element.get_text().strip() if price_element else ''
-            
-            # Resim bulmaya çalış
-            img = element.find('img')
-            image_url = urljoin(page_url, img.get('src', '')) if img and img.get('src') else ''
-            
-            # Link bulmaya çalış
-            link = element.find('a', href=True)
-            product_url = urljoin(page_url, link['href']) if link and 'href' in link.attrs else ''
-            
-            return {
-                "title": title,
-                "price": price,
-                "image_url": image_url,
-                "product_url": product_url,
-                "description": "",
-                "selected": False
-            }
+        # Site özel seçicileri al
+        selectors = self.get_site_specific_selectors()
+        
+        # Element içinde başlık ara
+        title_element = self.find_element_by_selectors(element, selectors["titles"])
+        title = title_element.get_text().strip() if hasattr(title_element, 'get_text') else str(title_element) if title_element else ''
+        
+        # Element içinde fiyat ara
+        price_element = self.find_element_by_selectors(element, selectors["prices"])
+        price = price_element.get_text().strip() if hasattr(price_element, 'get_text') else str(price_element) if price_element else ''
+        
+        # Element içinde resim ara
+        image = self.find_element_by_selectors(element, selectors["images"], 'src')
+        image_url = urljoin(page_url, image) if image else ''
+        
+        # Ürün URL'sini bul
+        link = element.find('a', href=True) if element.name != 'a' else element
+        product_url = urljoin(page_url, link['href']) if link and 'href' in link.attrs else ''
+        
+        return {
+            "title": title,
+            "price": price,
+            "image_url": image_url,
+            "product_url": product_url,
+            "description": "",
+            "selected": False
+        }
     
     def get_product_details(self, product_url):
         """Ürün sayfasından detaylı bilgileri çeker."""
@@ -142,20 +133,23 @@ class ProductScraper(BaseScraper):
             
         soup = BeautifulSoup(html, 'html.parser')
         
+        # Site özel seçicileri al
+        selectors = self.get_site_specific_selectors()
+        
         # Başlık
-        title = self.find_element_by_selectors(soup, self.product_selectors["titles"])
+        title = self.find_element_by_selectors(soup, selectors["titles"])
         title = title.get_text().strip() if hasattr(title, 'get_text') else str(title) if title else ''
         
         # Fiyat
-        price = self.find_element_by_selectors(soup, self.product_selectors["prices"])
+        price = self.find_element_by_selectors(soup, selectors["prices"])
         price = price.get_text().strip() if hasattr(price, 'get_text') else str(price) if price else ''
         
         # Resim
-        image = self.find_element_by_selectors(soup, self.product_selectors["images"], 'src')
+        image = self.find_element_by_selectors(soup, selectors["images"], 'src')
         image_url = urljoin(product_url, image) if image else ''
         
         # Açıklama
-        description = self.find_element_by_selectors(soup, self.product_selectors["descriptions"])
+        description = self.find_element_by_selectors(soup, selectors["descriptions"])
         description = description.get_text().strip() if hasattr(description, 'get_text') else str(description) if description else ''
         
         return {
@@ -190,6 +184,9 @@ class ProductScraper(BaseScraper):
         total_pages = min(max_pages, len(urls_to_visit))
         
         self.update_progress(f"Taramaya başlanıyor: {start_url}", 0, total_pages)
+        
+        # Site özel seçicileri al
+        selectors = self.get_site_specific_selectors()
         
         while urls_to_visit and page_count < max_pages:
             current_url = urls_to_visit.pop(0)
@@ -264,7 +261,7 @@ class ProductScraper(BaseScraper):
             
             # Sonraki sayfa linkini bul
             next_page = None
-            next_element = self.find_element_by_selectors(soup, self.product_selectors["next_page"])
+            next_element = self.find_element_by_selectors(soup, selectors["next_page"])
             
             if next_element and hasattr(next_element, 'get') and next_element.get('href'):
                 next_page = urljoin(current_url, next_element['href'])
