@@ -34,3 +34,6 @@ env/
 # Project specific
 products.json
 *.log
+
+# WordPress configuration (contains sensitive information)
+wp_config.py

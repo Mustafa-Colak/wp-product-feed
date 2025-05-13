@@ -9,6 +9,17 @@ from uploaders.wordpress_uploader import WordPressUploader
 from ui.product_preview import ProductPreviewWindow
 from config import DEFAULT_CONFIG
 
+# WordPress yapılandırma dosyasını içe aktarmaya çalış
+try:
+    from wp_config import WP_CONFIG
+except ImportError:
+    WP_CONFIG = {
+        "site_url": "",
+        "username": "",
+        "password": "",
+        "category_id": 9
+    }
+
 class ProductScraperApp:
     def __init__(self, root):
         self.root = root
@@ -130,6 +141,17 @@ class ProductScraperApp:
             variable=self.wp_verify_ssl_var
         )
         self.wp_verify_ssl_check.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky=tk.W)
+        
+        # WordPress yapılandırma dosyasından bilgileri doldur
+        if WP_CONFIG["site_url"]:
+            self.wp_url_entry.insert(0, WP_CONFIG["site_url"])
+        if WP_CONFIG["username"]:
+            self.username_entry.insert(0, WP_CONFIG["username"])
+        if WP_CONFIG["password"]:
+            self.password_entry.insert(0, WP_CONFIG["password"])
+        if WP_CONFIG["category_id"]:
+            self.category_entry.delete(0, tk.END)
+            self.category_entry.insert(0, str(WP_CONFIG["category_id"]))
         
         # Düğmeler
         button_frame = ttk.Frame(main_frame)
